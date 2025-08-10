@@ -4,16 +4,6 @@ import uuid
 from datetime import datetime
 from sip_utils import extract_sip_messages, filter_messages, compare_messages, highlight_text_differences
 import pandas as pd
-from io import StringIO
-
-# Try to import plotly, but handle case where it's not available
-try:
-    import plotly.express as px
-    import plotly.graph_objects as go
-    PLOTLY_AVAILABLE = True
-except ImportError:
-    PLOTLY_AVAILABLE = False
-    st.warning("⚠️ plotly not available. Visualizations will be disabled.")
 
 # Try to import magic, but handle case where it's not available
 try:
@@ -21,40 +11,13 @@ try:
     MAGIC_AVAILABLE = True
 except ImportError:
     MAGIC_AVAILABLE = False
-    st.warning("⚠️ python-magic not available. File type validation will be limited.")
 
 # Page configuration
 st.set_page_config(
-    page_title="SIP PCAP Comparison Tool",
+    page_title="PCAP SIP Comparator",
     page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
-
-# Custom CSS for better styling
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.5rem;
-        color: #1f77b4;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .metric-card {
-        background-color: #f0f2f6;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 4px solid #1f77b4;
-    }
-    .file-upload-box {
-        border: 2px dashed #1f77b4;
-        border-radius: 0.5rem;
-        padding: 2rem;
-        text-align: center;
-        margin: 1rem 0;
-    }
-</style>
-""", unsafe_allow_html=True)
 
 # Helper functions
 def is_valid_pcap(file):
@@ -104,25 +67,6 @@ def save_uploaded_file(uploaded_file):
         return filepath
     return None
 
-def create_message_dataframe(messages):
-    """Convert messages to pandas DataFrame for analysis"""
-    if not messages:
-        return pd.DataFrame()
-    
-    data = []
-    for i, msg in enumerate(messages):
-        data.append({
-            'Index': i,
-            'Method': msg.get('method', 'Unknown'),
-            'Call-ID': msg.get('call_id', 'Unknown'),
-            'From': msg.get('from', 'Unknown'),
-            'To': msg.get('to', 'Unknown'),
-            'Length': len(msg.get('raw_message', '')),
-            'Timestamp': msg.get('timestamp', 'Unknown')
-        })
-    
-    return pd.DataFrame(data)
-
 def highlight_differences(text1, text2):
     """Highlight differences between two text strings"""
     ranges1, ranges2 = highlight_text_differences(text1, text2)
@@ -141,38 +85,31 @@ def highlight_differences(text1, text2):
 
 # Main application
 def main():
-    st.markdown('<h1 class="main-header">📊 SIP PCAP Comparison Tool</h1>', unsafe_allow_html=True)
+    st.title("PCAP SIP Comparator")
     
-    # Sidebar for configuration
-    st.sidebar.header("⚙️ Configuration")
+    # Initialize session state
+    if 'messages1' not in st.session_state:
+        st.session_state.messages1 = []
+    if 'messages2' not in st.session_state:
+        st.session_state.messages2 = []
+    if 'filtered1' not in st.session_state:
+        st.session_state.filtered1 = []
+    if 'filtered2' not in st.session_state:
+        st.session_state.filtered2 = []
+    if 'unmatched1' not in st.session_state:
+        st.session_state.unmatched1 = []
+    if 'unmatched2' not in st.session_state:
+        st.session_state.unmatched2 = []
+    if 'selected1' not in st.session_state:
+        st.session_state.selected1 = None
+    if 'selected2' not in st.session_state:
+        st.session_state.selected2 = None
     
-    # Similarity threshold
-    threshold = st.sidebar.slider(
-        "Similarity Threshold",
-        min_value=0.0,
-        max_value=1.0,
-        value=0.8,
-        step=0.05,
-        help="Minimum similarity score for messages to be considered matching"
-    )
-    
-    # Message type filter
-    msg_type_filter = st.sidebar.selectbox(
-        "Message Type Filter",
-        ["ALL", "INVITE", "ACK", "BYE", "CANCEL", "REGISTER", "OPTIONS", "INFO", "PRACK", "UPDATE", "REFER", "SUBSCRIBE", "NOTIFY", "PUBLISH", "MESSAGE"]
-    )
-    
-    # Call-ID filter
-    callid_filter = st.sidebar.text_input(
-        "Call-ID Filter",
-        placeholder="Enter Call-ID to filter messages"
-    )
-    
-    # Main content area
+    # File upload section
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("📁 PCAP File 1")
+        st.subheader("PCAP File 1")
         uploaded_file1 = st.file_uploader(
             "Choose first PCAP file",
             type=['pcap', 'pcapng'],
@@ -180,7 +117,7 @@ def main():
         )
     
     with col2:
-        st.subheader("📁 PCAP File 2")
+        st.subheader("PCAP File 2")
         uploaded_file2 = st.file_uploader(
             "Choose second PCAP file",
             type=['pcap', 'pcapng'],
@@ -206,204 +143,13 @@ def main():
             # Store in session state
             st.session_state.messages1 = messages1
             st.session_state.messages2 = messages2
+            st.session_state.filtered1 = messages1
+            st.session_state.filtered2 = messages2
+            st.session_state.unmatched1 = []
+            st.session_state.unmatched2 = []
             
-            # Display file statistics
-            col1, col2, col3, col4 = st.columns(4)
+            st.success(f"✅ Extracted {len(messages1)} messages from File 1 and {len(messages2)} messages from File 2")
             
-            with col1:
-                st.metric("File 1 Messages", len(messages1))
-            
-            with col2:
-                st.metric("File 2 Messages", len(messages2))
-            
-            with col3:
-                st.metric("Total Messages", len(messages1) + len(messages2))
-            
-            with col4:
-                st.metric("Similarity Threshold", f"{threshold:.2f}")
-            
-            # Filter messages if needed
-            if msg_type_filter != "ALL" or callid_filter:
-                messages1_filtered = filter_messages(messages1, msg_type_filter, callid_filter)
-                messages2_filtered = filter_messages(messages2, msg_type_filter, callid_filter)
-            else:
-                messages1_filtered = messages1
-                messages2_filtered = messages2
-            
-            # Create DataFrames for analysis
-            df1 = create_message_dataframe(messages1_filtered)
-            df2 = create_message_dataframe(messages2_filtered)
-            
-            # Comparison analysis
-            st.subheader("🔍 Comparison Analysis")
-            
-            if st.button("🚀 Compare Messages", type="primary"):
-                with st.spinner("Comparing messages..."):
-                    # Find unmatched messages
-                    unmatched1 = []
-                    unmatched2 = []
-                    
-                    for i, msg1 in enumerate(messages1_filtered):
-                        found = False
-                        for msg2 in messages2_filtered:
-                            if compare_messages(msg1, msg2, threshold=threshold):
-                                found = True
-                                break
-                        if not found:
-                            unmatched1.append(i)
-                    
-                    for i, msg2 in enumerate(messages2_filtered):
-                        found = False
-                        for msg1 in messages1_filtered:
-                            if compare_messages(msg2, msg1, threshold=threshold):
-                                found = True
-                                break
-                        if not found:
-                            unmatched2.append(i)
-                    
-                    # Display results
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.metric("Unmatched in File 1", len(unmatched1))
-                        if unmatched1:
-                            st.write("**Unmatched Message Indices:**")
-                            st.write(unmatched1)
-                    
-                    with col2:
-                        st.metric("Unmatched in File 2", len(unmatched2))
-                        if unmatched2:
-                            st.write("**Unmatched Message Indices:**")
-                            st.write(unmatched2)
-                    
-                    # Visualization
-                    if len(df1) > 0 or len(df2) > 0:
-                        st.subheader("📈 Message Analysis")
-                        
-                        if PLOTLY_AVAILABLE:
-                            # Message type distribution
-                            if len(df1) > 0:
-                                fig1 = px.pie(df1, names='Method', title='File 1 - Message Type Distribution')
-                                st.plotly_chart(fig1, use_container_width=True)
-                            
-                            if len(df2) > 0:
-                                fig2 = px.pie(df2, names='Method', title='File 2 - Message Type Distribution')
-                                st.plotly_chart(fig2, use_container_width=True)
-                            
-                            # Message length comparison
-                            if len(df1) > 0 and len(df2) > 0:
-                                combined_df = pd.concat([
-                                    df1.assign(File='File 1'),
-                                    df2.assign(File='File 2')
-                                ])
-                                
-                                fig3 = px.box(combined_df, x='File', y='Length', color='Method',
-                                             title='Message Length Distribution by File')
-                                st.plotly_chart(fig3, use_container_width=True)
-                        else:
-                            # Fallback: show data tables instead of charts
-                            st.info("📊 Visualizations disabled. Showing data tables instead.")
-                            
-                            if len(df1) > 0:
-                                st.write("**File 1 - Message Type Summary:**")
-                                st.dataframe(df1['Method'].value_counts().reset_index().rename(columns={'index': 'Method', 'Method': 'Count'}))
-                            
-                            if len(df2) > 0:
-                                st.write("**File 2 - Message Type Summary:**")
-                                st.dataframe(df2['Method'].value_counts().reset_index().rename(columns={'index': 'Method', 'Method': 'Count'}))
-            
-            # Message browser
-            st.subheader("📋 Message Browser")
-            
-            tab1, tab2 = st.tabs(["File 1 Messages", "File 2 Messages"])
-            
-            with tab1:
-                if len(df1) > 0:
-                    st.dataframe(df1, use_container_width=True)
-                    
-                    # Message detail viewer
-                    if len(messages1_filtered) > 0:
-                        msg_index = st.selectbox("Select message to view:", range(len(messages1_filtered)), key="msg1")
-                        selected_msg = messages1_filtered[msg_index]
-                        
-                        st.subheader("Message Details")
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            st.write("**Method:**", selected_msg.get('method', 'Unknown'))
-                            st.write("**Call-ID:**", selected_msg.get('call_id', 'Unknown'))
-                            st.write("**From:**", selected_msg.get('from', 'Unknown'))
-                            st.write("**To:**", selected_msg.get('to', 'Unknown'))
-                        
-                        with col2:
-                            st.write("**Length:**", len(selected_msg.get('raw_message', '')))
-                            st.write("**Timestamp:**", selected_msg.get('timestamp', 'Unknown'))
-                        
-                        st.text_area("Raw Message:", selected_msg.get('raw_message', ''), height=200)
-                else:
-                    st.info("No messages found in File 1")
-            
-            with tab2:
-                if len(df2) > 0:
-                    st.dataframe(df2, use_container_width=True)
-                    
-                    # Message detail viewer
-                    if len(messages2_filtered) > 0:
-                        msg_index = st.selectbox("Select message to view:", range(len(messages2_filtered)), key="msg2")
-                        selected_msg = messages2_filtered[msg_index]
-                        
-                        st.subheader("Message Details")
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            st.write("**Method:**", selected_msg.get('method', 'Unknown'))
-                            st.write("**Call-ID:**", selected_msg.get('call_id', 'Unknown'))
-                            st.write("**From:**", selected_msg.get('from', 'Unknown'))
-                            st.write("**To:**", selected_msg.get('to', 'Unknown'))
-                        
-                        with col2:
-                            st.write("**Length:**", len(selected_msg.get('raw_message', '')))
-                            st.write("**Timestamp:**", selected_msg.get('timestamp', 'Unknown'))
-                        
-                        st.text_area("Raw Message:", selected_msg.get('raw_message', ''), height=200)
-                else:
-                    st.info("No messages found in File 2")
-            
-            # Side-by-side comparison
-            if len(messages1_filtered) > 0 and len(messages2_filtered) > 0:
-                st.subheader("🔄 Side-by-Side Comparison")
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    msg1_index = st.selectbox("Select File 1 message:", range(len(messages1_filtered)), key="comp1")
-                
-                with col2:
-                    msg2_index = st.selectbox("Select File 2 message:", range(len(messages2_filtered)), key="comp2")
-                
-                if st.button("🔍 Compare Selected Messages"):
-                    msg1 = messages1_filtered[msg1_index]
-                    msg2 = messages2_filtered[msg2_index]
-                    
-                    text1 = msg1.get('raw_message', '')
-                    text2 = msg2.get('raw_message', '')
-                    
-                    highlighted1, highlighted2 = highlight_differences(text1, text2)
-                    
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.subheader("File 1 Message")
-                        st.markdown(highlighted1)
-                    
-                    with col2:
-                        st.subheader("File 2 Message")
-                        st.markdown(highlighted2)
-                    
-                    # Similarity score
-                    similarity = compare_messages(msg1, msg2, threshold=threshold)
-                    st.metric("Messages Match", "✅ Yes" if similarity else "❌ No")
-        
         except Exception as e:
             st.error(f"❌ Error processing files: {str(e)}")
         
@@ -417,25 +163,192 @@ def main():
             except Exception:
                 pass
     
-    elif uploaded_file1 or uploaded_file2:
-        st.info("📝 Please upload both PCAP files to begin analysis")
+    # Filtering controls (only show if files are loaded)
+    if st.session_state.messages1 or st.session_state.messages2:
+        st.subheader("🔍 Filtering & Comparison")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            msg_type = st.selectbox(
+                "SIP Type",
+                ["ALL", "INVITE", "ACK", "BYE", "CANCEL", "OPTIONS", "REGISTER", "200 OK", "4XX", "5XX", "6XX"]
+            )
+        
+        with col2:
+            callid_filter = st.text_input("Call-ID Filter", placeholder="Filter by Call-ID")
+        
+        with col3:
+            threshold = st.slider("Similarity Threshold", 0.0, 1.0, 0.8, 0.05)
+        
+        with col4:
+            if st.button("🔍 Apply Filters", type="primary"):
+                # Apply filters
+                filtered1 = filter_messages(st.session_state.messages1, msg_type, callid_filter)
+                filtered2 = filter_messages(st.session_state.messages2, msg_type, callid_filter)
+                
+                st.session_state.filtered1 = filtered1
+                st.session_state.filtered2 = filtered2
+                st.session_state.unmatched1 = []
+                st.session_state.unmatched2 = []
+                
+                st.success(f"✅ Filtered: {len(filtered1)} messages in File 1, {len(filtered2)} messages in File 2")
+        
+        # Compare button
+        if st.button("🔄 Compare Messages", type="secondary"):
+            with st.spinner("Comparing messages..."):
+                # Find unmatched messages
+                unmatched1 = []
+                unmatched2 = []
+                
+                for i, msg1 in enumerate(st.session_state.filtered1):
+                    found = False
+                    for msg2 in st.session_state.filtered2:
+                        if compare_messages(msg1, msg2, threshold=threshold):
+                            found = True
+                            break
+                    if not found:
+                        unmatched1.append(i)
+                
+                for i, msg2 in enumerate(st.session_state.filtered2):
+                    found = False
+                    for msg1 in st.session_state.filtered1:
+                        if compare_messages(msg2, msg1, threshold=threshold):
+                            found = True
+                            break
+                    if not found:
+                        unmatched2.append(i)
+                
+                st.session_state.unmatched1 = unmatched1
+                st.session_state.unmatched2 = unmatched2
+                
+                st.success(f"✅ Comparison complete: {len(unmatched1)} unmatched in File 1, {len(unmatched2)} unmatched in File 2")
     
-    else:
-        st.markdown("""
-        <div class="file-upload-box">
-            <h3>📁 Upload PCAP Files</h3>
-            <p>Upload two PCAP files to compare SIP messages</p>
-        </div>
-        """, unsafe_allow_html=True)
+    # Message display section
+    if st.session_state.filtered1 or st.session_state.filtered2:
+        st.subheader("📋 Messages")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("**File 1 Messages**")
+            if st.session_state.filtered1:
+                for i, msg in enumerate(st.session_state.filtered1):
+                    # Create a unique key for each message
+                    key = f"msg1_{i}"
+                    
+                    # Determine background color
+                    bg_color = ""
+                    if i == st.session_state.selected1:
+                        bg_color = "background-color: #cce5ff;"
+                    elif i in st.session_state.unmatched1:
+                        bg_color = "background-color: #fff3cd;"
+                    
+                    # Display message
+                    with st.container():
+                        st.markdown(f"""
+                        <div style="padding: 8px; border-bottom: 1px solid #ddd; {bg_color} cursor: pointer;" 
+                                 onclick="document.getElementById('select1_{i}').click()">
+                            <strong>{msg.get('time', 'Unknown')}</strong> - {msg.get('first_line', msg.get('type', ''))}
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        if st.button(f"Select", key=f"select1_{i}", help=f"Select message {i}"):
+                            st.session_state.selected1 = i
+                            st.rerun()
+            else:
+                st.info("No messages in File 1")
+        
+        with col2:
+            st.write("**File 2 Messages**")
+            if st.session_state.filtered2:
+                for i, msg in enumerate(st.session_state.filtered2):
+                    # Create a unique key for each message
+                    key = f"msg2_{i}"
+                    
+                    # Determine background color
+                    bg_color = ""
+                    if i == st.session_state.selected2:
+                        bg_color = "background-color: #cce5ff;"
+                    elif i in st.session_state.unmatched2:
+                        bg_color = "background-color: #fff3cd;"
+                    
+                    # Display message
+                    with st.container():
+                        st.markdown(f"""
+                        <div style="padding: 8px; border-bottom: 1px solid #ddd; {bg_color} cursor: pointer;" 
+                                 onclick="document.getElementById('select2_{i}').click()">
+                            <strong>{msg.get('time', 'Unknown')}</strong> - {msg.get('first_line', msg.get('type', ''))}
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        if st.button(f"Select", key=f"select2_{i}", help=f"Select message {i}"):
+                            st.session_state.selected2 = i
+                            st.rerun()
+            else:
+                st.info("No messages in File 2")
+        
+        # Message details section
+        if st.session_state.selected1 is not None or st.session_state.selected2 is not None:
+            st.subheader("📄 Message Details")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**File 1 Message Details**")
+                if st.session_state.selected1 is not None and st.session_state.selected1 < len(st.session_state.filtered1):
+                    selected_msg1 = st.session_state.filtered1[st.session_state.selected1]
+                    st.text_area("Raw Message:", selected_msg1.get('message', ''), height=200, key="details1")
+                else:
+                    st.info("No message selected")
+            
+            with col2:
+                st.write("**File 2 Message Details**")
+                if st.session_state.selected2 is not None and st.session_state.selected2 < len(st.session_state.filtered2):
+                    selected_msg2 = st.session_state.filtered2[st.session_state.selected2]
+                    st.text_area("Raw Message:", selected_msg2.get('message', ''), height=200, key="details2")
+                else:
+                    st.info("No message selected")
+            
+            # Side-by-side comparison
+            if (st.session_state.selected1 is not None and st.session_state.selected1 < len(st.session_state.filtered1) and
+                st.session_state.selected2 is not None and st.session_state.selected2 < len(st.session_state.filtered2)):
+                
+                st.subheader("🔄 Side-by-Side Comparison")
+                
+                msg1 = st.session_state.filtered1[st.session_state.selected1]
+                msg2 = st.session_state.filtered2[st.session_state.selected2]
+                
+                text1 = msg1.get('message', '')
+                text2 = msg2.get('message', '')
+                
+                highlighted1, highlighted2 = highlight_differences(text1, text2)
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write("**File 1 Message (with differences highlighted)**")
+                    st.markdown(highlighted1)
+                
+                with col2:
+                    st.write("**File 2 Message (with differences highlighted)**")
+                    st.markdown(highlighted2)
+                
+                # Similarity score
+                similarity = compare_messages(msg1, msg2, threshold=threshold)
+                st.metric("Messages Match", "✅ Yes" if similarity else "❌ No")
+    
+    # Instructions when no files are loaded
+    if not st.session_state.messages1 and not st.session_state.messages2:
+        st.info("📝 Please upload both PCAP files to begin analysis")
         
         st.markdown("""
-        ### 🚀 Features:
-        - **SIP Message Extraction**: Automatically extracts SIP messages from PCAP files
-        - **Message Comparison**: Compare messages with configurable similarity threshold
-        - **Filtering**: Filter by message type and Call-ID
-        - **Visualization**: Charts and graphs for message analysis
-        - **Side-by-Side Comparison**: Highlight differences between messages
-        - **Real-time Analysis**: Interactive interface with immediate results
+        ### 🚀 How to Use:
+        1. **Upload two PCAP files** using the file uploaders above
+        2. **Apply filters** to focus on specific message types or Call-IDs
+        3. **Compare messages** to find unmatched messages (highlighted in yellow)
+        4. **Click on messages** to view details and compare side-by-side
+        5. **View highlighted differences** when both messages are selected
         """)
 
 if __name__ == "__main__":
