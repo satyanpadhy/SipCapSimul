@@ -4,9 +4,15 @@ import os
 from datetime import datetime
 from sip_utils import extract_sip_messages, filter_messages, compare_messages, highlight_text_differences
 import uuid
-import magic
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+
+# Try to import magic, but handle case where it's not available
+try:
+    import magic
+    MAGIC_AVAILABLE = True
+except ImportError:
+    MAGIC_AVAILABLE = False
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -32,9 +38,16 @@ def is_valid_pcap(filepath):
             header = f.read(4)
             if any(header.startswith(mh) for mh in ALLOWED_MAGIC_HEADERS):
                 return True
-        # Fallback: check MIME type
-        mime = magic.from_file(filepath, mime=True)
-        if mime in [b'data', b'application/vnd.tcpdump.pcap', b'application/octet-stream']:
+        # Fallback: check MIME type if magic is available
+        if MAGIC_AVAILABLE:
+            try:
+                mime = magic.from_file(filepath, mime=True)
+                if mime in [b'data', b'application/vnd.tcpdump.pcap', b'application/octet-stream']:
+                    return True
+            except Exception:
+                pass
+        # Additional fallback: check file extension
+        if filepath.lower().endswith(('.pcap', '.pcapng')):
             return True
     except Exception:
         pass

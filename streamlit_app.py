@@ -1,13 +1,20 @@
 import streamlit as st
 import os
 import uuid
-import magic
 from datetime import datetime
 from sip_utils import extract_sip_messages, filter_messages, compare_messages, highlight_text_differences
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from io import StringIO
+
+# Try to import magic, but handle case where it's not available
+try:
+    import magic
+    MAGIC_AVAILABLE = True
+except ImportError:
+    MAGIC_AVAILABLE = False
+    st.warning("⚠️ python-magic not available. File type validation will be limited.")
 
 # Page configuration
 st.set_page_config(
@@ -58,9 +65,18 @@ def is_valid_pcap(file):
             return True
             
         # Fallback: check file extension
-        if file.name.lower().endswith('.pcap'):
+        if file.name.lower().endswith(('.pcap', '.pcapng')):
             return True
             
+        # Additional fallback: use magic if available
+        if MAGIC_AVAILABLE:
+            try:
+                mime = magic.from_buffer(header, mime=True)
+                if mime in [b'data', b'application/vnd.tcpdump.pcap', b'application/octet-stream']:
+                    return True
+            except Exception:
+                pass
+                
     except Exception:
         pass
     return False
