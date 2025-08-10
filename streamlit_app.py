@@ -276,41 +276,41 @@ def main():
                             st.write("**Unmatched Message Indices:**")
                             st.write(unmatched2)
                     
-                     # Visualization
-                     if len(df1) > 0 or len(df2) > 0:
-                         st.subheader("📈 Message Analysis")
-                         
-                         if PLOTLY_AVAILABLE:
-                             # Message type distribution
-                             if len(df1) > 0:
-                                 fig1 = px.pie(df1, names='Method', title='File 1 - Message Type Distribution')
-                                 st.plotly_chart(fig1, use_container_width=True)
-                             
-                             if len(df2) > 0:
-                                 fig2 = px.pie(df2, names='Method', title='File 2 - Message Type Distribution')
-                                 st.plotly_chart(fig2, use_container_width=True)
-                             
-                             # Message length comparison
-                             if len(df1) > 0 and len(df2) > 0:
-                                 combined_df = pd.concat([
-                                     df1.assign(File='File 1'),
-                                     df2.assign(File='File 2')
-                                 ])
-                                 
-                                 fig3 = px.box(combined_df, x='File', y='Length', color='Method',
-                                              title='Message Length Distribution by File')
-                                 st.plotly_chart(fig3, use_container_width=True)
-                         else:
-                             # Fallback: show data tables instead of charts
-                             st.info("📊 Visualizations disabled. Showing data tables instead.")
-                             
-                             if len(df1) > 0:
-                                 st.write("**File 1 - Message Type Summary:**")
-                                 st.dataframe(df1['Method'].value_counts().reset_index().rename(columns={'index': 'Method', 'Method': 'Count'}))
-                             
-                             if len(df2) > 0:
-                                 st.write("**File 2 - Message Type Summary:**")
-                                 st.dataframe(df2['Method'].value_counts().reset_index().rename(columns={'index': 'Method', 'Method': 'Count'}))
+                    # Visualization
+                    if len(df1) > 0 or len(df2) > 0:
+                        st.subheader("📈 Message Analysis")
+                        
+                        if PLOTLY_AVAILABLE:
+                            # Message type distribution
+                            if len(df1) > 0:
+                                fig1 = px.pie(df1, names='Method', title='File 1 - Message Type Distribution')
+                                st.plotly_chart(fig1, use_container_width=True)
+                            
+                            if len(df2) > 0:
+                                fig2 = px.pie(df2, names='Method', title='File 2 - Message Type Distribution')
+                                st.plotly_chart(fig2, use_container_width=True)
+                            
+                            # Message length comparison
+                            if len(df1) > 0 and len(df2) > 0:
+                                combined_df = pd.concat([
+                                    df1.assign(File='File 1'),
+                                    df2.assign(File='File 2')
+                                ])
+                                
+                                fig3 = px.box(combined_df, x='File', y='Length', color='Method',
+                                             title='Message Length Distribution by File')
+                                st.plotly_chart(fig3, use_container_width=True)
+                        else:
+                            # Fallback: show data tables instead of charts
+                            st.info("📊 Visualizations disabled. Showing data tables instead.")
+                            
+                            if len(df1) > 0:
+                                st.write("**File 1 - Message Type Summary:**")
+                                st.dataframe(df1['Method'].value_counts().reset_index().rename(columns={'index': 'Method', 'Method': 'Count'}))
+                            
+                            if len(df2) > 0:
+                                st.write("**File 2 - Message Type Summary:**")
+                                st.dataframe(df2['Method'].value_counts().reset_index().rename(columns={'index': 'Method', 'Method': 'Count'}))
             
             # Message browser
             st.subheader("📋 Message Browser")
